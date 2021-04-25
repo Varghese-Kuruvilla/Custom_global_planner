@@ -1,0 +1,5 @@
+<library path="lib/libvolta_carrot">
+    <class name="carrot_planner/CarrotPlanner" type="carrot_planner::CarrotPlanner" base_class_type="nav_core::BaseGlobalPlanner">
+        <description>Test global planner plugin.</description>
+    </class>
+</library>
