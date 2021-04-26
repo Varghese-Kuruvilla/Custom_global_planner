@@ -34,11 +34,39 @@
 *
 * Authors: Eitan Marder-Eppstein, Sachin Chitta
 *********************************************************************/
+extern "C" {
+  #include "dubins.h"
+}
+#include <tf/tf.h>
+#include <geometry_msgs/Pose2D.h>
+#include <iostream>
+#include <vector>
 #include "../include/carrot_planner.h"
 #include <pluginlib/class_list_macros.h>
 
+using namespace std;
+
 //register this planner as a BaseGlobalPlanner plugin
 PLUGINLIB_EXPORT_CLASS(carrot_planner::CarrotPlanner, nav_core::BaseGlobalPlanner)
+
+//Dubins Curves Utils
+vector<vector<double>> vec;
+vector<vector<double>> result_vec;
+
+int appendresult(double q[3], double x, void* user_data) {
+  vector<double> v={q[0],q[1],q[2]};
+  vec.push_back(v);
+  return 0;
+}
+vector<vector<double>> gen_path(double q0[] , double q1[], int turning_radius){
+    DubinsPath path;
+    dubins_shortest_path(&path, q0, q1, 1.0);
+    
+    printf("#x,y,theta,t\n");
+    // dubins_path_sample_many(&path,  0.1, printConfiguration, NULL);
+    dubins_path_sample_many(&path,  0.3, appendresult, NULL);
+    return vec;
+}  
 
 namespace carrot_planner {
 
@@ -82,25 +110,98 @@ namespace carrot_planner {
 //     double footprint_cost = world_model_->footprintCost(x_i, y_i, theta_i, footprint);
 //     return footprint_cost;
 //   }
-
+    //Utils functions
+    double* q2rpy(const geometry_msgs::PoseStamped& point)
+    {
+      double roll, pitch, yaw;
+      tf::Quaternion q(
+        point.pose.orientation.x,
+        point.pose.orientation.y,
+        point.pose.orientation.z,
+        point.pose.orientation.w);
+        tf::Matrix3x3 m(q);
+        m.getRPY(roll, pitch, yaw);
+        static double orient_arr[] = {roll,pitch,yaw};
+        return orient_arr;
+    }
+    void print_plan(std::vector<geometry_msgs::PoseStamped>& plan)
+    {
+      double roll,pitch,yaw;
+      double *orient_ptr;
+      for(int i=0;i<plan.size();++i)
+      {
+        cout<<"Translation"<<endl;
+        cout<<plan[i].pose.position.x<<" "<<plan[i].pose.position.y<<" "<<plan[i].pose.position.z<<endl;
+        cout<<"Orientation"<<endl;
+        orient_ptr = q2rpy(plan[i]);
+        cout<<orient_ptr[0]<<" "<<orient_ptr[1]<<" "<<orient_ptr[2]<<endl; //Corresponds to yaw, pitch and roll
+      }
+    }
 
     bool CarrotPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal,  std::vector<geometry_msgs::PoseStamped>& plan ){
         plan.push_back(start);
-        for (int i=0; i<20; i++){
-        geometry_msgs::PoseStamped new_goal = goal;
-        tf::Quaternion goal_quat = tf::createQuaternionFromYaw(1.54);
-    
-        new_goal.pose.position.x = -2.5+(0.05*i);
-        new_goal.pose.position.y = -3.5+(0.05*i);
-    
-        new_goal.pose.orientation.x = goal_quat.x();
-        new_goal.pose.orientation.y = goal_quat.y();
-        new_goal.pose.orientation.z = goal_quat.z();
-        new_goal.pose.orientation.w = goal_quat.w();
-    
-        plan.push_back(new_goal);
+
+        //Extract yaw from quaternion information
+        double start_roll,start_pitch,start_yaw;
+        double goal_roll,goal_pitch,goal_yaw;
+        
+        tf::Quaternion start_q(
+        start.pose.orientation.x,
+        start.pose.orientation.y,
+        start.pose.orientation.z,
+        start.pose.orientation.w);
+        tf::Matrix3x3 start_m(start_q);
+        start_m.getRPY(start_roll, start_pitch, start_yaw);
+
+        tf::Quaternion goal_q(
+        goal.pose.orientation.x,
+        goal.pose.orientation.y,
+        goal.pose.orientation.z,
+        goal.pose.orientation.w);
+        tf::Matrix3x3 goal_m(goal_q);
+        goal_m.getRPY(goal_roll, goal_pitch, goal_yaw);
+        // cout<<"yaw angle"<<yaw<<endl;
+
+        //Start position
+        double q0[] = {start.pose.position.x,start.pose.position.y,start_yaw};
+        //Goal position
+        double q1[] = {goal.pose.position.x,goal.pose.position.y,goal_yaw};
+        result_vec = gen_path(q0,q1,1.0);//TODO: Don't hardcode the turning radius
+        geometry_msgs::PoseStamped new_goal = goal; 
+        //Output
+        for(int i=0;i<result_vec.size();++i)
+        {
+          new_goal.pose.position.x = result_vec[i][0];
+          new_goal.pose.position.y = result_vec[i][1];
+          new_goal.pose.position.z = 0.0;
+
+          //New Goal Orientation
+          tf::Quaternion goal_quat = tf::createQuaternionFromYaw(result_vec[i][2]);
+          new_goal.pose.orientation.x = goal_quat.x();
+          new_goal.pose.orientation.y = goal_quat.y();
+          new_goal.pose.orientation.z = goal_quat.z();
+          new_goal.pose.orientation.w = goal_quat.w();
+
+          plan.push_back(new_goal);
+
         }
+
+        // for (int i=0; i<20; i++){
+        // geometry_msgs::PoseStamped new_goal = goal;
+        // tf::Quaternion goal_quat = tf::createQuaternionFromYaw(1.54);
+    
+        // new_goal.pose.position.x = -2.5+(0.05*i);
+        // new_goal.pose.position.y = -3.5+(0.05*i);
+    
+        // new_goal.pose.orientation.x = goal_quat.x();
+        // new_goal.pose.orientation.y = goal_quat.y();
+        // new_goal.pose.orientation.z = goal_quat.z();
+        // new_goal.pose.orientation.w = goal_quat.w();
+    
+        // plan.push_back(new_goal);
+        // }
         plan.push_back(goal);
+        print_plan(plan);
     return true;
     }
   };

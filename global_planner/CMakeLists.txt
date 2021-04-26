@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(volta_carrot)
-add_definitions(-std=c++11 -Wall -Werror)
+# add_definitions(-std=c++11 -Wall -Werror)
 
 find_package(catkin REQUIRED 
   COMPONENTS
@@ -17,6 +17,7 @@ find_package(catkin REQUIRED
 #find_package(Eigen3 REQUIRED)
 
 include_directories(include ${catkin_INCLUDE_DIRS})
+
 message(STATUS "catkin_INCLUDE_DIRS:${catkin_INCLUDE_DIRS}")
 #add_definitions(${EIGEN3_DEFINITIONS})
 
@@ -35,9 +36,10 @@ catkin_package(
 add_library(${PROJECT_NAME} 
   src/carrot_planner.cpp
 )
+add_library(dubins src/dubins.c)
 
 add_dependencies(volta_carrot ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} dubins m)
 
 #For debug
 
